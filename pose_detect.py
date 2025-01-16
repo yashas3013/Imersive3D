@@ -20,6 +20,17 @@ COCO_KEYPOINT_NAMES = [
     "Left Knee", "Right Knee", "Left Ankle", "Right Ankle"
 ]
 
+# Depth Scale
+depth_sensor = profile.get_device().first_depth_sensor()
+depth_scale = depth_sensor.get_depth_scale()
+
+clipping_distance_in_meters = 1 #1 meter
+clipping_distance = clipping_distance_in_meters / depth_scale
+
+align_to = rs.stream.color
+align = rs.align(align_to)
+
+
 def main():
     # Load the YOLOv8 Pose model
     model = YOLO("yolo11n-pose.pt")  # You can choose other models like yolov8s-pose.pt, etc.
@@ -35,15 +46,19 @@ def main():
     
     while True:
         frames = pipeline.wait_for_frames()
-        depth_frame = frames.get_depth_frame()
-        color_frame = frames.get_color_frame()
+
+        aligned_frames = align.process(frames)
+        
+        aligned_depth_frame = aligned_frames.get_depth_frame() # aligned_depth_frame is a 640x480 depth image
+        color_frame = aligned_frames.get_color_frame()
+        
         # ret, frame = cap.read()
         # if not ret:
         #     print("Error: Cannot read from the camera.")
         #     break
-        depth_image = np.asanyarray(depth_frame.get_data())
+        depth_image = np.asanyarray(aligned_depth_frame.get_data())
         color_image = np.asanyarray(color_frame.get_data())
-        print(depth_image.shape)
+        print(color_image.shape)
         # deph_colormap = cv2.convertScaleAbs(depth_image, alpha=0.03)
         # depth_rgb = cv2.cvtColor(depth_colormap, cv2.COLOR_GRAY2RGB)
         # Detect poses in the frame
@@ -60,8 +75,11 @@ def main():
             # Extract x, y coordinates and confidence for each keypoint
             for kp_idx in range(len(keys)):  
                 x,y = keys[kp_idx]
-                # print(depth_image((x,y)))             
-                person_keypoints.append((int(x), int(y)))
+                x,y = int(x),int(y)
+                # print(depth_image[x][y])
+                # TODO make this work
+                cv2.circle(depth_image,(x,y),1,(255,0,0),1)             
+                person_keypoints.append((x, y))
 
             # Print the keypoints for this person
             for x, y  in person_keypoints:
@@ -72,7 +90,7 @@ def main():
 
         # Show the frame
         cv2.imshow("Pose Detection", annotated_frame)
-
+        cv2.imshow("Depth",depth_image)
         # Break the loop if 'q' is pressed
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break

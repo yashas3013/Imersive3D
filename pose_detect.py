@@ -11,7 +11,7 @@ device = pipeline_profile.get_device()
 device_product_line = str(device.get_info(rs.camera_info.product_line))
 config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)    
 config.enable_stream(rs.stream.color,640,480,rs.format.bgr8,30)
-pipeline.start(config)
+profile = pipeline.start(config)
 
 COCO_KEYPOINT_NAMES = [
     "Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear",
@@ -59,7 +59,7 @@ def main():
         depth_image = np.asanyarray(aligned_depth_frame.get_data())
         color_image = np.asanyarray(color_frame.get_data())
         print(color_image.shape)
-        # deph_colormap = cv2.convertScaleAbs(depth_image, alpha=0.03)
+        depth_colormap = cv2.convertScaleAbs(depth_image, alpha=0.03)
         # depth_rgb = cv2.cvtColor(depth_colormap, cv2.COLOR_GRAY2RGB)
         # Detect poses in the frame
         results = model(color_image)
@@ -78,7 +78,7 @@ def main():
                 x,y = int(x),int(y)
                 # print(depth_image[x][y])
                 # TODO make this work
-                cv2.circle(depth_image,(x,y),1,(255,0,0),1)             
+                cv2.circle(depth_colormap,(x,y),5,(255,0,0),-1)             
                 person_keypoints.append((x, y))
 
             # Print the keypoints for this person
@@ -90,7 +90,7 @@ def main():
 
         # Show the frame
         cv2.imshow("Pose Detection", annotated_frame)
-        cv2.imshow("Depth",depth_image)
+        cv2.imshow("Depth",depth_colormap)
         # Break the loop if 'q' is pressed
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break

@@ -24,6 +24,8 @@ COCO_KEYPOINT_NAMES = [
 depth_sensor = profile.get_device().first_depth_sensor()
 depth_scale = depth_sensor.get_depth_scale()
 
+
+
 clipping_distance_in_meters = 1 #1 meter
 clipping_distance = clipping_distance_in_meters / depth_scale
 
@@ -31,18 +33,12 @@ align_to = rs.stream.color
 align = rs.align(align_to)
 
 
+prof = profile.get_stream(rs.stream.depth)
+itr = prof.as_video_stream_profile().get_intrinsics()
+
 def main():
     # Load the YOLOv8 Pose model
     model = YOLO("yolo11n-pose.pt")  # You can choose other models like yolov8s-pose.pt, etc.
-
-    # Open the webcam
-    # cap = cv2.VideoCapture(0)  # Change the index if you have multiple cameras
-
-    # if not cap.isOpened():
-    #     print("Error: Cannot access the camera.")
-    #     return
-
-    # print("Press 'q' to quit.")
     
     while True:
         frames = pipeline.wait_for_frames()
@@ -51,19 +47,12 @@ def main():
         
         aligned_depth_frame = aligned_frames.get_depth_frame() # aligned_depth_frame is a 640x480 depth image
         color_frame = aligned_frames.get_color_frame()
-        
-        # ret, frame = cap.read()
-        # if not ret:
-        #     print("Error: Cannot read from the camera.")
-        #     break
         depth_image = np.asanyarray(aligned_depth_frame.get_data())
         color_image = np.asanyarray(color_frame.get_data())
         print(color_image.shape)
         depth_colormap = cv2.convertScaleAbs(depth_image, alpha=0.03)
-        # depth_rgb = cv2.cvtColor(depth_colormap, cv2.COLOR_GRAY2RGB)
         # Detect poses in the frame
         results = model(color_image)
-        # print(results[0].keypoints.xy)
         
         persons = []
         for idx, result in enumerate(results[0].keypoints):
@@ -76,10 +65,11 @@ def main():
             for kp_idx in range(len(keys)):  
                 x,y = keys[kp_idx]
                 x,y = int(x),int(y)
-                # print(depth_image[x][y])
-                # TODO make this work
+                depth = depth_image[y,x]
+                point3d = rs.rs2_deproject_pixel_to_point(itr,[x,y],depth*depth_scale)
+                print(point3d)
                 cv2.circle(depth_colormap,(x,y),5,(255,0,0),-1)             
-                person_keypoints.append((x, y))
+                person_keypoints.append(point3d)
 
             # Print the keypoints for this person
             for x, y  in person_keypoints:
@@ -101,4 +91,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -2,7 +2,12 @@ import cv2
 from ultralytics import YOLO
 import pyrealsense2 as rs
 import numpy as np
-
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use("Qt5Agg")
+from mpl_toolkits.mplot3d import Axes3D
+import threading
+import json
 
 # initialize realsense pipeline
 pipeline = rs.pipeline()
@@ -34,6 +39,26 @@ color_itr = profile.get_stream(rs.stream.color).as_video_stream_profile().get_in
 
 depth_to_color_extrin =  profile.get_stream(rs.stream.depth).as_video_stream_profile().get_extrinsics_to( profile.get_stream(rs.stream.color))
 color_to_depth_extrin =  profile.get_stream(rs.stream.color).as_video_stream_profile().get_extrinsics_to( profile.get_stream(rs.stream.depth))
+
+
+
+def save_keypoints_to_json(person_keypoints, filename="server/keypoints.json"):
+    keypoints_data = []
+
+    for i, keypoint in enumerate(person_keypoints):
+        keypoints_data.append({
+            "name": COCO_KEYPOINT_NAMES[i],
+            "x": keypoint[0],  # Right
+            "y": -keypoint[1], # Down
+            "z": keypoint[2]   # Forward
+        })
+
+    # Save to a JSON file
+    with open(filename, "w") as f:
+        json.dump(keypoints_data, f, indent=4)
+
+    print(f"Keypoints saved to {filename}")
+
 
 def main():
     # Load the YOLOv8 Pose model
@@ -84,7 +109,9 @@ def main():
 
                 cv2.circle(depth_colormap,(int(depth_point[0]),int(depth_point[1])),5,(255,0,0),-1)             
                 person_keypoints.append(point3d)
-
+            
+            if person_keypoints:
+                save_keypoints_to_json(person_keypoints)
         
         # Visualize the results on the frame
         annotated_frame = results[0].plot()

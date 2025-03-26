@@ -6,9 +6,12 @@ import json
 from flask import Flask, jsonify
 import threading
 from flask_cors import CORS
+from scipy.spatial.transform import Rotation as R
+
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
+
 # Store keypoints data in memory
 keypoints_data = []
 
@@ -33,7 +36,6 @@ profile = pipeline.start(config)
 # Depth camera parameters
 depth_sensor = profile.get_device().first_depth_sensor()
 depth_scale = depth_sensor.get_depth_scale()
-
 depth_min = 0.11  # meters
 depth_max = 1.0   # meters
 
@@ -50,18 +52,66 @@ color_to_depth_extrin = profile.get_stream(rs.stream.color).as_video_stream_prof
 def get_keypoints():
     return jsonify(keypoints_data)
 
+def compute_orientation(joints):
+    """Calculate the orientation of the body using shoulders and hips."""
+    try:
+        left_shoulder = np.array(joints["Left Shoulder"])
+        right_shoulder = np.array(joints["Right Shoulder"])
+        left_hip = np.array(joints["Left Hip"])
+        right_hip = np.array(joints["Right Hip"])
+
+        # Forward direction (torso)
+        forward_vec = (left_shoulder + right_shoulder) / 2 - (left_hip + right_hip) / 2
+        forward_vec /= np.linalg.norm(forward_vec)  # Normalize
+
+        # Right direction (shoulders)
+        right_vec = right_shoulder - left_shoulder
+        right_vec /= np.linalg.norm(right_vec)
+
+        # Upward direction (cross product)
+        up_vec = np.cross(right_vec, forward_vec)
+        up_vec /= np.linalg.norm(up_vec)
+
+        # Construct rotation matrix
+        rotation_matrix = np.vstack([right_vec, up_vec, forward_vec]).T
+
+        # Convert to quaternion
+        rotation = R.from_matrix(rotation_matrix)
+        quaternion = rotation.as_quat()  # (x, y, z, w)
+
+        return quaternion.tolist()  # Return as list (x, y, z, w)
+    
+    except KeyError:
+        return [0, 0, 0, 1]  # Default no rotation (identity quaternion)
+
 def save_keypoints(person_keypoints):
+    """Save keypoints and compute orientation."""
     global keypoints_data
+    joints = {COCO_KEYPOINT_NAMES[i]: keypoint for i, keypoint in enumerate(person_keypoints)}
+
+    # Compute orientation from shoulders and hips
+    orientation = compute_orientation(joints)
+
     keypoints_data = [
         {
             "name": COCO_KEYPOINT_NAMES[i],
             "x": keypoint[0],  # Right
-            "y": -keypoint[2],  # Down
+            "y": keypoint[2],  # Down
             "z": -keypoint[1]    # Forward
         }
         for i, keypoint in enumerate(person_keypoints)
     ]
-    print("Keypoints updated.")
+
+    # Add orientation (quaternion) to data
+    keypoints_data.append({
+        "name": "Orientation",
+        "x": orientation[0],
+        "y": orientation[1],
+        "z": orientation[2],
+        "w": orientation[3]
+    })
+
+    print("Keypoints and orientation updated.")
 
 def run_flask():
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
